@@ -1,0 +1,125 @@
+-- Aimbot e ESP melhorados para Xeno Krush PvP
+-- Toggle com F, FOV customizável, movimento suave, ESP vermelho
+
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+
+local aimbotOn = false
+local smoothness = 10 -- quanto maior, mais lento e seguro
+local fov_radius = 150 -- pixels do centro da tela (FOV do aimbot)
+
+-- Detecta executor
+local mousemove
+if syn and syn.mousemoverel then
+    mousemove = syn.mousemoverel
+elseif mousemoverel then
+    mousemove = mousemoverel
+elseif mousemoveabs then
+    mousemove = function(x, y)
+        mousemoveabs(x, y)
+    end
+else
+    warn("Nenhuma função de mover mouse encontrada! Use Synapse, KRNL ou executor compatível.")
+    return
+end
+
+-- ESP
+local drawings = {}
+
+local function updateESP()
+    for _,v in pairs(Players:GetPlayers()) do
+        if v ~= lp and v.Character and v.Character:FindFirstChild("Head") and v.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+            if not drawings[v.Name] then
+                local txt = Drawing.new("Text")
+                txt.Size = 16
+                txt.Color = Color3.new(1,0,0) -- vermelho
+                txt.Outline = true
+                drawings[v.Name] = txt
+            end
+            local pos, onscreen = cam:WorldToViewportPoint(v.Character.Head.Position)
+            local txt = drawings[v.Name]
+            txt.Visible = onscreen
+            txt.Position = Vector2.new(pos.X, pos.Y)
+            txt.Text = v.Name
+        else
+            if drawings[v.Name] then
+                drawings[v.Name].Visible = false
+            end
+        end
+    end
+    -- Limpa ESP de quem saiu
+    for n,draw in pairs(drawings) do
+        if not Players:FindFirstChild(n) then
+            draw:Remove()
+            drawings[n] = nil
+        end
+    end
+end
+
+-- Desenha FOV
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = true
+fovCircle.Transparency = 0.35
+fovCircle.Thickness = 2
+fovCircle.NumSides = 60
+fovCircle.Radius = fov_radius
+fovCircle.Color = Color3.new(1,0,0)
+fovCircle.Filled = false
+
+local function updateFOV()
+    local vps = cam.ViewportSize
+    fovCircle.Position = Vector2.new(vps.X/2, vps.Y/2)
+    fovCircle.Radius = fov_radius
+end
+
+local function getClosestInFOV()
+    local vps = cam.ViewportSize
+    local screenCenter = Vector2.new(vps.X/2, vps.Y/2)
+    local closest, minDist, partPos = nil, fov_radius, nil
+    for _,v in pairs(Players:GetPlayers()) do
+        if v ~= lp and v.Character and v.Character:FindFirstChild("Head") and v.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+            local head = v.Character.Head
+            local torso = v.Character:FindFirstChild("Torso") or v.Character:FindFirstChild("UpperTorso") or head
+            local part = head or torso
+            local pos, onScreen = cam:WorldToViewportPoint(part.Position)
+            if onScreen then
+                local dist = (screenCenter - Vector2.new(pos.X, pos.Y)).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    closest = part
+                    partPos = pos
+                end
+            end
+        end
+    end
+    return partPos
+end
+
+RS.RenderStepped:Connect(function()
+    updateESP()
+    updateFOV()
+    if aimbotOn then
+        local targetPos = getClosestInFOV()
+        if targetPos then
+            local vps = cam.ViewportSize
+            local screenCenter = Vector2.new(vps.X/2, vps.Y/2)
+            local dx = (targetPos.X - screenCenter.X) / smoothness
+            local dy = (targetPos.Y - screenCenter.Y) / smoothness
+            if math.abs(dx) > 1 or math.abs(dy) > 1 then
+                pcall(function()
+                    mousemove(dx, dy)
+                end)
+            end
+        end
+    end
+end)
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        aimbotOn = not aimbotOn
+    end
+end)
